@@ -17,15 +17,14 @@
 
 package org.apache.inlong.manager.web.auth.openapi;
 
-import com.google.common.collect.Sets;
-
-import lombok.extern.slf4j.Slf4j;
-
-import org.apache.inlong.manager.common.enums.UserTypeEnum;
-import org.apache.inlong.manager.pojo.user.UserInfo;
+import org.apache.inlong.manager.common.enums.TenantUserTypeEnum;
 import org.apache.inlong.manager.common.util.AESUtils;
 import org.apache.inlong.manager.common.util.Preconditions;
+import org.apache.inlong.manager.pojo.user.UserInfo;
 import org.apache.inlong.manager.service.user.UserService;
+
+import com.google.common.collect.Sets;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.shiro.authc.AuthenticationException;
 import org.apache.shiro.authc.AuthenticationInfo;
 import org.apache.shiro.authc.AuthenticationToken;
@@ -61,8 +60,8 @@ public class OpenAPIAuthenticatingRealm extends AuthenticatingRealm {
             String secretKey = new String(
                     AESUtils.decryptAsString(userInfo.getSecretKey(), userInfo.getEncryptVersion()));
             userInfo.setRoles(Sets.newHashSet(userInfo.getAccountType() == 0
-                    ? UserTypeEnum.ADMIN.name()
-                    : UserTypeEnum.OPERATOR.name()));
+                    ? TenantUserTypeEnum.TENANT_ADMIN.name()
+                    : TenantUserTypeEnum.TENANT_OPERATOR.name()));
             return new SimpleAuthenticationInfo(userInfo, secretKey, getName());
         } catch (Exception e) {
             log.error("decrypt secret key fail: ", e);

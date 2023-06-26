@@ -17,12 +17,13 @@
 
 package org.apache.inlong.agent.message;
 
+import org.apache.inlong.common.msg.InLongMsg;
+import org.apache.inlong.common.util.MessageUtils;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.inlong.common.msg.InLongMsg;
-import org.apache.inlong.common.util.MessageUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,6 @@ public class BatchProxyMessage {
     private List<byte[]> dataList;
     private long dataTime;
     private Map<String, String> extraMap;
-    private boolean isSyncSend;
 
     public InLongMsg getInLongMsg() {
         InLongMsg message = InLongMsg.newInLongMsg(true);

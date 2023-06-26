@@ -1,3 +1,4 @@
+
 # InLong Changelog
 
 <!---
@@ -27,7 +28,9 @@
 |:-----------------------------------------------------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------|
 | [INLONG-7847](https://github.com/apache/inlong/issues/7847) | [Bug][Agent] Failed to create MySQL reader                                                                                                         |
 | [INLONG-7783](https://github.com/apache/inlong/issues/7783) | [Feature][Agent] Support sink data tor Kafka                                                                                                       |
-| [INLONG-7752](https://github.com/apache/inlong/issues/7752) | [Bug][Agent] PulsarSink threadPool throw reject exception                                                                                          |
+| [INLONG-7752](https://github.com/apache/inlong/issues/7752) | [Bug][Agent] PulsarSink threadPool throw reject exception                                                                                          |                         
+| [INLONG-7976](https://github.com/apache/inlong/issues/7976) | [Bug][Agent] The data collected by the agent is incomplete                                                                                         |
+| [INLONG-8026](https://github.com/apache/inlong/issues/8026) | [Improve][Agent] Improve the Agent performance                                                                                                     |
 
 ### DataProxy
 |                            ISSUE                            | Summary                                                                                                  |
@@ -37,7 +40,6 @@
 | [INLONG-7769](https://github.com/apache/inlong/issues/7769) | [Bug][DataProxy] NPE when request Inlong Manager failed                                                  |
 | [INLONG-7512](https://github.com/apache/inlong/issues/7512) | [Improve][DataProxy] Update the metrics log level to avoid the log file increasing quickly               |
 | [INLONG-7766](https://github.com/apache/inlong/issues/7766) | [Bug][DataProxySDK] Adjusted frame length exceeds occurred when reporting data through the HTTP protocol |
-| [INLONG-7194](https://github.com/apache/inlong/issues/7194) | [Improve][DataProxy] Migrate index log statistics for the new mq layer                                   |
 
 ### TubeMQ
 |                            ISSUE                            | Summary                                                              |
@@ -47,9 +49,12 @@
 ### Manager
 |                            ISSUE                            | Summary                                                                                        |
 |:-----------------------------------------------------------:|:-----------------------------------------------------------------------------------------------|
+| [INLONG-8035](https://github.com/apache/inlong/issues/8035) | [Bug][Manager] Non-file tasks cannot be recovered from the heartbeat timeout state             |
+| [INLONG-8021](https://github.com/apache/inlong/issues/8021) | [Improve][Manager] Periodically delete sources with inconsistent states                        |
 | [INLONG-8006](https://github.com/apache/inlong/issues/8006) | [Improve][Manager] Set displayname for the auto-registered cluster                             |
 | [INLONG-7999](https://github.com/apache/inlong/issues/7999) | [Improve][Manager] Support PostgreSQL data node                                                |
 | [INLONG-7996](https://github.com/apache/inlong/issues/7996) | [Improve][Manager] Support issued kafka consumer group to sort                                 |
+| [INLONG-7987](https://github.com/apache/inlong/issues/7987) | [Improve][Manager] Add a heartbeat timeout status to the source                                |
 | [INLONG-7981](https://github.com/apache/inlong/issues/7981) | [Bug][Manager] Failed to stop source correctly when suspend a group                            |
 | [INLONG-7948](https://github.com/apache/inlong/issues/7948) | [Improve][Manager] Add user authentication when operate inlong consume                         |
 | [INLONG-7946](https://github.com/apache/inlong/issues/7946) | [Improve][Manager] Add user authentication when bind clusterTag                                |
@@ -151,6 +156,7 @@
 | [INLONG-7970](https://github.com/apache/inlong/issues/7970) | [Bug][Sort] java.lang.ClassCastException: java.lang.String cannot be cast to org.apache.flink.table.data.StringData                                |
 | [INLONG-7747](https://github.com/apache/inlong/issues/7747) | [Umbrella][Sort] Improve memory stability of data ingesting into iceberg                                                                           |
 | [INLONG-6545](https://github.com/apache/inlong/issues/6545) | [Improve][Sort] Accurately parse the schema type and completely match the missing precision information                                            |
+| [INLONG-8029](https://github.com/apache/inlong/issues/8029) | [Improve][Sort] Use fixed subscription name when start a pulsar reader                                                                             |
 
 ### Audit
 |                            ISSUE                            | Summary                                                                                   |
@@ -191,6 +197,8 @@
 | [INLONG-7971](https://github.com/apache/inlong/issues/7971) | [Feature][Dashboard] Support batch import fields by Excel                                                      |
 | [INLONG-8001](https://github.com/apache/inlong/issues/8001) | [Feature][Dashboard] Support postgreSQL node management                                                        |
 | [INLONG-8011](https://github.com/apache/inlong/issues/8011) | [Improve][Dashboard] Cluster name and node name can be modified when editing                                   |
+| [INLONG-8022](https://github.com/apache/inlong/issues/8022) | [Improve][Dashboard] Node management title text optimization                                                   |
+| [INLONG-8043](https://github.com/apache/inlong/issues/8043) | [Improve][Dashboard] The label displays the cluster name as displayName                                        |
 
 ### Other
 |                            ISSUE                            | Summary                                                                                                 |

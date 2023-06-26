@@ -17,15 +17,16 @@
 
 package org.apache.inlong.manager.pojo.cluster.pulsar;
 
+import org.apache.inlong.manager.common.enums.ErrorCodeEnum;
+import org.apache.inlong.manager.common.exceptions.BusinessException;
+import org.apache.inlong.manager.common.util.JsonUtils;
+
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.apache.inlong.manager.common.enums.ErrorCodeEnum;
-import org.apache.inlong.manager.common.exceptions.BusinessException;
-import org.apache.inlong.manager.common.util.JsonUtils;
 
 import javax.validation.constraints.NotNull;
 
@@ -49,7 +50,7 @@ public class PulsarClusterDTO {
     private String serviceUrl;
 
     @ApiModelProperty(value = "Pulsar tenant, default is 'public'")
-    private String tenant;
+    private String pulsarTenant;
 
     /**
      * Saved to ext_params field, it is convenient for DataProxy to obtain.
@@ -64,7 +65,7 @@ public class PulsarClusterDTO {
         return PulsarClusterDTO.builder()
                 .adminUrl(request.getAdminUrl())
                 .serviceUrl(request.getUrl())
-                .tenant(request.getTenant())
+                .pulsarTenant(request.getPulsarTenant())
                 .build();
     }
 

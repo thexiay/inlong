@@ -17,17 +17,29 @@
 
 package org.apache.inlong.dataproxy.source;
 
-import static org.apache.inlong.common.util.NetworkUtils.getLocalIp;
+import org.apache.inlong.common.enums.DataProxyErrCode;
+import org.apache.inlong.common.enums.DataProxyMsgEncType;
+import org.apache.inlong.common.monitor.MonitorIndex;
+import org.apache.inlong.common.monitor.MonitorIndexExt;
+import org.apache.inlong.common.msg.AttributeConstants;
+import org.apache.inlong.common.msg.InLongMsg;
+import org.apache.inlong.common.msg.MsgType;
+import org.apache.inlong.dataproxy.base.ProxyMessage;
+import org.apache.inlong.dataproxy.base.SinkRspEvent;
+import org.apache.inlong.dataproxy.config.CommonConfigHolder;
+import org.apache.inlong.dataproxy.config.ConfigManager;
+import org.apache.inlong.dataproxy.consts.AttrConstants;
+import org.apache.inlong.dataproxy.consts.ConfigConstants;
+import org.apache.inlong.dataproxy.exception.MessageIDException;
+import org.apache.inlong.dataproxy.metrics.DataProxyMetricItemSet;
+import org.apache.inlong.dataproxy.metrics.audit.AuditUtils;
+import org.apache.inlong.dataproxy.utils.AddressUtils;
+import org.apache.inlong.dataproxy.utils.DateTimeUtils;
+import org.apache.inlong.dataproxy.utils.MessageUtils;
+import org.apache.inlong.sdk.commons.protocol.EventConstants;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -39,27 +51,18 @@ import org.apache.flume.ChannelException;
 import org.apache.flume.Event;
 import org.apache.flume.channel.ChannelProcessor;
 import org.apache.flume.event.EventBuilder;
-import org.apache.inlong.common.monitor.MonitorIndex;
-import org.apache.inlong.common.monitor.MonitorIndexExt;
-import org.apache.inlong.common.msg.AttributeConstants;
-import org.apache.inlong.common.msg.InLongMsg;
-import org.apache.inlong.common.enums.DataProxyErrCode;
-import org.apache.inlong.common.msg.MsgType;
-import org.apache.inlong.dataproxy.base.SinkRspEvent;
-import org.apache.inlong.dataproxy.base.ProxyMessage;
-import org.apache.inlong.dataproxy.config.CommonConfigHolder;
-import org.apache.inlong.dataproxy.config.ConfigManager;
-import org.apache.inlong.dataproxy.consts.AttrConstants;
-import org.apache.inlong.dataproxy.consts.ConfigConstants;
-import org.apache.inlong.dataproxy.exception.MessageIDException;
-import org.apache.inlong.dataproxy.metrics.DataProxyMetricItemSet;
-import org.apache.inlong.dataproxy.metrics.audit.AuditUtils;
-import org.apache.inlong.dataproxy.utils.AddressUtils;
-import org.apache.inlong.dataproxy.utils.DateTimeUtils;
-import org.apache.inlong.dataproxy.utils.InLongMsgVer;
-import org.apache.inlong.dataproxy.utils.MessageUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.apache.inlong.common.util.NetworkUtils.getLocalIp;
 
 /**
  * Server message handler
@@ -357,19 +360,12 @@ public class ServerMessageHandler extends ChannelInboundHandlerAdapter {
                 String groupIdNum = commonAttrMap.get(AttrConstants.GROUPID_NUM);
                 String streamIdNum = commonAttrMap.get(AttrConstants.STREAMID_NUM);
                 // get configured groupId and steamId by numbers
-                if (configManager.getGroupIdMappingProperties() != null
-                        && configManager.getStreamIdMappingProperties() != null) {
-                    groupId = configManager.getGroupIdMappingProperties().get(groupIdNum);
-                    streamId = (configManager.getStreamIdMappingProperties().get(groupIdNum) == null)
-                            ? null
-                            : configManager.getStreamIdMappingProperties().get(groupIdNum).get(streamIdNum);
+                if (!configManager.isGroupIdNumConfigEmpty()
+                        && !configManager.isStreamIdNumConfigEmpty()) {
+                    groupId = configManager.getGroupIdNameByNum(groupIdNum);
+                    streamId = configManager.getStreamIdNameByIdNum(groupIdNum, streamIdNum);
                     if (groupId != null && streamId != null) {
-                        String enableTrans =
-                                (configManager.getGroupIdEnableMappingProperties() == null)
-                                        ? null
-                                        : configManager.getGroupIdEnableMappingProperties().get(groupIdNum);
-                        if (("TRUE".equalsIgnoreCase(enableTrans)
-                                && "TRUE".equalsIgnoreCase(num2name))) {
+                        if ((configManager.isEnableNum2NameTrans(groupIdNum) && "TRUE".equalsIgnoreCase(num2name))) {
                             String extraAttr = "groupId=" + groupId + "&" + "streamId=" + streamId;
                             message.setData(newBinMsg(message.getData(), extraAttr));
                         }
@@ -377,26 +373,16 @@ public class ServerMessageHandler extends ChannelInboundHandlerAdapter {
                         message.setGroupId(groupId);
                         message.setStreamId(streamId);
                         // get configured topic name
-                        configTopic = MessageUtils.getTopic(
-                                configManager.getTopicProperties(), groupId, streamId);
+                        configTopic = configManager.getTopicName(groupId, streamId);
                     }
                 }
             } else {
-                // get configured m value
-                Map<String, String> mxValue =
-                        configManager.getMxPropertiesMaps().get(groupId);
-                if (mxValue != null && mxValue.size() != 0) {
-                    message.getAttributeMap().putAll(mxValue);
-                } else {
-                    message.getAttributeMap().putAll(mapSplitter.split(this.defaultMXAttr));
-                }
                 // get configured topic name
-                configTopic = MessageUtils.getTopic(
-                        configManager.getTopicProperties(), groupId, streamId);
+                configTopic = configManager.getTopicName(groupId, streamId);
             }
             // check topic configure
             if (StringUtils.isEmpty(configTopic)) {
-                if (CommonConfigHolder.getInstance().isNoTopicAccept()) {
+                if (CommonConfigHolder.getInstance().isEnableUnConfigTopicAccept()) {
                     configTopic = this.defaultTopic;
                 } else {
                     commonAttrMap.put(AttributeConstants.MESSAGE_PROCESS_ERRCODE,
@@ -488,7 +474,10 @@ public class ServerMessageHandler extends ChannelInboundHandlerAdapter {
                 headers.put(ConfigConstants.REMOTE_IDC_KEY, DEFAULT_REMOTE_IDC_VALUE);
                 headers.put(ConfigConstants.MSG_COUNTER_KEY,
                         commonAttrMap.get(AttributeConstants.MESSAGE_COUNT));
-                headers.put(ConfigConstants.MSG_ENCODE_VER, InLongMsgVer.INLONG_V0.getName());
+                headers.put(ConfigConstants.MSG_ENCODE_VER,
+                        DataProxyMsgEncType.MSG_ENCODE_TYPE_INLONGMSG.getStrId());
+                headers.put(EventConstants.HEADER_KEY_VERSION,
+                        DataProxyMsgEncType.MSG_ENCODE_TYPE_INLONGMSG.getStrId());
                 headers.put(AttributeConstants.RCV_TIME,
                         commonAttrMap.get(AttributeConstants.RCV_TIME));
                 headers.put(ConfigConstants.DECODER_ATTRS,
@@ -526,14 +515,14 @@ public class ServerMessageHandler extends ChannelInboundHandlerAdapter {
                 Pair<Boolean, String> evenProcType =
                         MessageUtils.getEventProcType(syncSend, proxySend);
                 if (evenProcType.getLeft()) {
-                    event = new SinkRspEvent(event, msgType, ctx);
+                    event = new SinkRspEvent(event, msgType, ctx.channel());
                 }
                 // build metric data item
                 long longDataTime = Long.parseLong(strDataTime);
                 longDataTime = longDataTime / 1000 / 60 / 10;
                 longDataTime = longDataTime * 1000 * 60 * 10;
                 strBuff.append(protocolType).append(AttrConstants.SEPARATOR)
-                        .append(topicEntry.getKey()).append(AttrConstants.SEPARATOR)
+                        .append(groupId).append(AttrConstants.SEPARATOR)
                         .append(streamIdEntry.getKey()).append(AttrConstants.SEPARATOR)
                         .append(strRemoteIP).append(AttrConstants.SEPARATOR)
                         .append(getLocalIp()).append(AttrConstants.SEPARATOR)

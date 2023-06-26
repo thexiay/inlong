@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS `inlong_group`
     `max_length`             int(11)               DEFAULT '10240' COMMENT 'The maximum length of a single piece of data, unit: Byte',
     `enable_zookeeper`       tinyint(1)            DEFAULT '0' COMMENT 'Whether to enable the zookeeper, 0-disable, 1-enable',
     `enable_create_resource` tinyint(1)            DEFAULT '1' COMMENT 'Whether to enable create resource? 0-disable, 1-enable',
-    `lightweight`            tinyint(1)            DEFAULT '0' COMMENT 'Whether to use lightweight mode, 0-no, 1-yes',
+    `inlong_group_mode`      tinyint(1)            DEFAULT '0' COMMENT 'Inlong group mode, Standard mode: 0, DataSync mode: 1',
     `data_report_type`       int(4)                DEFAULT '0' COMMENT 'Data report type. 0: report to DataProxy and respond when the DataProxy received data. 1: report to DataProxy and respond after DataProxy sends data. 2: report to MQ and respond when the MQ received data',
     `inlong_cluster_tag`     varchar(128)          DEFAULT NULL COMMENT 'The cluster tag, which links to inlong_cluster table',
     `ext_params`             mediumtext            DEFAULT NULL COMMENT 'Extended params, will be saved as JSON string',
@@ -238,7 +238,7 @@ CREATE TABLE IF NOT EXISTS `inlong_stream`
     `id`               int(11)      NOT NULL AUTO_INCREMENT COMMENT 'Incremental primary key',
     `inlong_group_id`  varchar(256) NOT NULL COMMENT 'Owning inlong group id',
     `inlong_stream_id` varchar(256) NOT NULL COMMENT 'Inlong stream id, non-deleted globally unique',
-    `name`             varchar(64)           DEFAULT NULL COMMENT 'The name of the inlong stream page display, can be Chinese',
+    `name`             varchar(256)          DEFAULT NULL COMMENT 'The name of the inlong stream page display, can be Chinese',
     `description`      varchar(256)          DEFAULT '' COMMENT 'Description of inlong stream',
     `mq_resource`      varchar(128)          DEFAULT NULL COMMENT 'MQ resource, in one stream, corresponding to the filter ID of TubeMQ, corresponding to the topic of Pulsar',
     `data_type`        varchar(20)           DEFAULT NULL COMMENT 'Data type, including: CSV, KEY-VALUE, JSON, AVRO, etc.',
@@ -564,10 +564,32 @@ CREATE TABLE IF NOT EXISTS `role`
 -- ----------------------------
 -- Table structure for user_role
 -- ----------------------------
-CREATE TABLE IF NOT EXISTS `user_role`
+CREATE TABLE IF NOT EXISTS `tenant_user_role`
 (
     `id`          int(11)      NOT NULL AUTO_INCREMENT,
-    `user_name`   varchar(256) NOT NULL COMMENT 'Username',
+    `username`   varchar(256)  NOT NULL COMMENT 'Username',
+    `role_code`   varchar(256) NOT NULL COMMENT 'User role code',
+    `disabled`    tinyint(1)   NOT NULL DEFAULT '0' COMMENT 'Whether to disabled, 0: enabled, 1: disabled',
+    `tenant`      varchar(256) NOT NULL DEFAULT 'public' COMMENT 'Inlong tenant',
+    `is_deleted`  int(11)               DEFAULT '0' COMMENT 'Whether to delete, 0 is not deleted, if greater than 0, delete',
+    `creator`     varchar(256) NOT NULL COMMENT 'Creator name',
+    `modifier`    varchar(256)          DEFAULT NULL COMMENT 'Modifier name',
+    `create_time` datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Create time',
+    `modify_time` datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Modify time',
+    `version`     int(11)      NOT NULL DEFAULT '1' COMMENT 'Version number, which will be incremented by 1 after modification',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `unique_tenant_user` (`username`, `tenant`, `is_deleted`),
+    INDEX `index_tenant` (`tenant`, `is_deleted`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='Tenant User Role Table';
+
+-- ----------------------------
+-- Table structure for inlong_user_role
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `inlong_user_role`
+(
+    `id`          int(11)      NOT NULL AUTO_INCREMENT,
+    `username`   varchar(256)  NOT NULL COMMENT 'Username',
     `role_code`   varchar(256) NOT NULL COMMENT 'User role code',
     `disabled`    tinyint(1)   NOT NULL DEFAULT '0' COMMENT 'Whether to disabled, 0: enabled, 1: disabled',
     `is_deleted`  int(11)               DEFAULT '0' COMMENT 'Whether to delete, 0 is not deleted, if greater than 0, delete',
@@ -576,9 +598,13 @@ CREATE TABLE IF NOT EXISTS `user_role`
     `create_time` datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Create time',
     `modify_time` datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Modify time',
     `version`     int(11)      NOT NULL DEFAULT '1' COMMENT 'Version number, which will be incremented by 1 after modification',
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `unique_inlong_user_role` (`username`, `role_code`, `is_deleted`)
 ) ENGINE = InnoDB
-  DEFAULT CHARSET = utf8mb4 COMMENT ='User Role Table';
+  DEFAULT CHARSET = utf8mb4 COMMENT ='Inlong User Role Table';
+
+INSERT INTO `inlong_user_role` (`username`, `role_code`, `creator`)
+VALUES ('admin', 'INLONG_ADMIN', 'inlong_init');
 
 -- ----------------------------
 -- Table structure for workflow_approver
@@ -787,6 +813,31 @@ CREATE TABLE IF NOT EXISTS `stream_heartbeat`
     UNIQUE KEY `unique_stream_heartbeat` (`component`, `instance`, `inlong_group_id`, `inlong_stream_id`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8 COMMENT ='Inlong stream heartbeat';
+
+-- ----------------------------
+-- Table structure for inlong_tenant
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `inlong_tenant`
+(
+    `id`           int(11)      NOT NULL AUTO_INCREMENT,
+    `name`         varchar(256) NOT NULL COMMENT 'Namespace, not support modification',
+    `description`  varchar(256) DEFAULT '' COMMENT 'Description of tenant',
+    `is_deleted`   int(11)      DEFAULT '0' COMMENT 'Whether to delete, 0 is not deleted, if greater than 0, delete',
+    `creator`      varchar(256) NOT NULL COMMENT 'Creator name',
+    `modifier`     varchar(256) DEFAULT NULL COMMENT 'Modifier name',
+    `create_time`  datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Create time',
+    `modify_time`  datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Modify time',
+    `version`      int(11)      NOT NULL DEFAULT '1' COMMENT 'Version number, which will be incremented by 1 after modification',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `unique_tenant_key` (`name`, `is_deleted`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8 COMMENT ='Inlong tenant table';
+
+-- ----------------------------
+-- Insert inlong_tenant item
+-- ----------------------------
+INSERT INTO `inlong_tenant`(`name`, `description`, `creator`, `modifier`)
+VALUES ('public', 'Default tenant', 'admin', 'admin');
 
 -- ----------------------------
 -- Table structure for audit_base

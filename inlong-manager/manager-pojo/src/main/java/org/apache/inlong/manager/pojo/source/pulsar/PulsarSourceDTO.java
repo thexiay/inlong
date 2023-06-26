@@ -17,16 +17,18 @@
 
 package org.apache.inlong.manager.pojo.source.pulsar;
 
+import org.apache.inlong.manager.common.enums.ErrorCodeEnum;
+import org.apache.inlong.manager.common.exceptions.BusinessException;
+import org.apache.inlong.manager.common.util.JsonUtils;
+
 import io.swagger.annotations.ApiModelProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.apache.inlong.manager.common.enums.ErrorCodeEnum;
-import org.apache.inlong.manager.common.exceptions.BusinessException;
-import org.apache.inlong.manager.common.util.JsonUtils;
 
 import javax.validation.constraints.NotNull;
+
 import java.util.Map;
 
 /**
@@ -39,7 +41,7 @@ import java.util.Map;
 public class PulsarSourceDTO {
 
     @ApiModelProperty("Pulsar tenant")
-    private String tenant;
+    private String pulsarTenant;
 
     @ApiModelProperty("Pulsar namespace")
     private String namespace;
@@ -83,7 +85,7 @@ public class PulsarSourceDTO {
         return PulsarSourceDTO.builder()
                 .adminUrl(request.getAdminUrl())
                 .serviceUrl(request.getServiceUrl())
-                .tenant(request.getTenant())
+                .pulsarTenant(request.getPulsarTenant())
                 .namespace(request.getNamespace())
                 .topic(request.getTopic())
                 .subscription(request.getSubscription())

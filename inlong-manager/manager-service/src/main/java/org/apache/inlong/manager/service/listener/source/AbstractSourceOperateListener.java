@@ -17,10 +17,6 @@
 
 package org.apache.inlong.manager.service.listener.source;
 
-import com.google.common.collect.Lists;
-import lombok.SneakyThrows;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.inlong.manager.common.enums.GroupOperateType;
 import org.apache.inlong.manager.common.enums.SourceStatus;
 import org.apache.inlong.manager.common.enums.TaskEvent;
@@ -36,6 +32,11 @@ import org.apache.inlong.manager.service.stream.InlongStreamService;
 import org.apache.inlong.manager.workflow.WorkflowContext;
 import org.apache.inlong.manager.workflow.event.ListenerResult;
 import org.apache.inlong.manager.workflow.event.task.SourceOperateListener;
+
+import com.google.common.collect.Lists;
+import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -62,7 +63,7 @@ public abstract class AbstractSourceOperateListener implements SourceOperateList
 
     @Override
     public ListenerResult listen(WorkflowContext context) throws Exception {
-        log.info("operate stream source for context={}", context);
+        log.info("operate stream source for groupId={}", context.getProcessForm().getInlongGroupId());
         InlongGroupInfo groupInfo = getGroupInfo(context.getProcessForm());
         final String groupId = groupInfo.getInlongGroupId();
         List<InlongStreamBriefInfo> streamResponses = streamService.listBriefWithSink(groupId);
@@ -104,6 +105,7 @@ public abstract class AbstractSourceOperateListener implements SourceOperateList
             SourceStatus sourceStatus = SourceStatus.forCode(status);
             // template sources are filtered and processed in corresponding subclass listeners
             if (sourceStatus == SourceStatus.SOURCE_NORMAL || sourceStatus == SourceStatus.SOURCE_STOP
+                    || sourceStatus == SourceStatus.HEARTBEAT_TIMEOUT
                     || CollectionUtils.isNotEmpty(streamSource.getSubSourceList())) {
                 return true;
             } else if (sourceStatus == SourceStatus.SOURCE_FAILED || sourceStatus == SourceStatus.SOURCE_DISABLE) {
@@ -118,7 +120,8 @@ public abstract class AbstractSourceOperateListener implements SourceOperateList
         if (sourceStatus != SourceStatus.SOURCE_NORMAL
                 && sourceStatus != SourceStatus.SOURCE_STOP
                 && sourceStatus != SourceStatus.SOURCE_DISABLE
-                && sourceStatus != SourceStatus.SOURCE_FAILED) {
+                && sourceStatus != SourceStatus.SOURCE_FAILED
+                && sourceStatus != SourceStatus.HEARTBEAT_TIMEOUT) {
             log.error("stream source ={} cannot be operated for status={}", streamSource, sourceStatus);
             unOperatedSources.add(streamSource);
         }

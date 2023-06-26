@@ -17,14 +17,13 @@
 
 package org.apache.inlong.manager.service.group;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.inlong.manager.common.consts.InlongConstants;
 import org.apache.inlong.manager.common.enums.ErrorCodeEnum;
 import org.apache.inlong.manager.common.enums.GroupOperateType;
 import org.apache.inlong.manager.common.enums.GroupStatus;
 import org.apache.inlong.manager.common.enums.ProcessName;
 import org.apache.inlong.manager.common.enums.TaskStatus;
-import org.apache.inlong.manager.common.enums.UserTypeEnum;
+import org.apache.inlong.manager.common.enums.TenantUserTypeEnum;
 import org.apache.inlong.manager.common.exceptions.BusinessException;
 import org.apache.inlong.manager.common.exceptions.WorkflowListenerException;
 import org.apache.inlong.manager.common.util.Preconditions;
@@ -44,6 +43,8 @@ import org.apache.inlong.manager.pojo.workflow.form.process.GroupResourceProcess
 import org.apache.inlong.manager.service.stream.InlongStreamService;
 import org.apache.inlong.manager.service.workflow.WorkflowService;
 import org.apache.inlong.manager.workflow.core.WorkflowQueryService;
+
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -249,7 +250,7 @@ public class InlongGroupProcessService {
         InlongGroupEntity entity = groupMapper.selectByGroupId(groupId);
         Preconditions.expectNotNull(entity, ErrorCodeEnum.GROUP_NOT_FOUND, ErrorCodeEnum.GROUP_NOT_FOUND.getMessage());
         // only the person in charges can delete
-        if (!opInfo.getAccountType().equals(UserTypeEnum.ADMIN.getCode())) {
+        if (!opInfo.getAccountType().equals(TenantUserTypeEnum.TENANT_ADMIN.getCode())) {
             List<String> inCharges = Arrays.asList(entity.getInCharges().split(InlongConstants.COMMA));
             if (!inCharges.contains(opInfo.getName())) {
                 throw new BusinessException(ErrorCodeEnum.GROUP_PERMISSION_DENIED);

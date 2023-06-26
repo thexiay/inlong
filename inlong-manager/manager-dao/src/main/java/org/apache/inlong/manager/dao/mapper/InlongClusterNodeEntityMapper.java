@@ -17,10 +17,11 @@
 
 package org.apache.inlong.manager.dao.mapper;
 
-import org.apache.ibatis.annotations.Param;
 import org.apache.inlong.manager.dao.entity.InlongClusterNodeEntity;
 import org.apache.inlong.manager.pojo.cluster.ClusterNodeRequest;
 import org.apache.inlong.manager.pojo.cluster.ClusterPageRequest;
+
+import org.apache.ibatis.annotations.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -43,9 +44,16 @@ public interface InlongClusterNodeEntityMapper {
 
     List<InlongClusterNodeEntity> selectByIpAndType(@Param("ip") String ip, @Param("type") String type);
 
+    List<InlongClusterNodeEntity> selectByParentIdAndIp(@Param("parentId") Integer parentId, @Param("ip") String ip);
+
     int updateById(InlongClusterNodeEntity record);
 
     int updateByIdSelective(InlongClusterNodeEntity record);
+
+    /**
+     * Update the status to `nextStatus` by the given id.
+     */
+    int updateStatus(@Param("id") Integer id, @Param("nextStatus") Integer nextStatus, @Param("status") Integer status);
 
     int deleteById(Integer id);
 

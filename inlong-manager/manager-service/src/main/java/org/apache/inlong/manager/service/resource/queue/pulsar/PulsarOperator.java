@@ -17,8 +17,6 @@
 
 package org.apache.inlong.manager.service.resource.queue.pulsar;
 
-import com.google.common.collect.Sets;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.inlong.manager.common.consts.InlongConstants;
 import org.apache.inlong.manager.common.conversion.ConversionHandle;
 import org.apache.inlong.manager.common.enums.ErrorCodeEnum;
@@ -27,6 +25,9 @@ import org.apache.inlong.manager.common.util.Preconditions;
 import org.apache.inlong.manager.pojo.group.pulsar.InlongPulsarInfo;
 import org.apache.inlong.manager.pojo.queue.pulsar.PulsarTopicInfo;
 import org.apache.inlong.manager.service.cluster.InlongClusterServiceImpl;
+
+import com.google.common.collect.Sets;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.pulsar.client.admin.Namespaces;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException;
@@ -147,7 +148,7 @@ public class PulsarOperator {
      */
     public void createTopic(PulsarAdmin pulsarAdmin, PulsarTopicInfo topicInfo) throws PulsarAdminException {
         Preconditions.expectNotNull(topicInfo, "pulsar topic info cannot be empty");
-        String tenant = topicInfo.getTenant();
+        String tenant = topicInfo.getPulsarTenant();
         String namespace = topicInfo.getNamespace();
         String topicName = topicInfo.getTopicName();
         String fullTopicName = tenant + "/" + namespace + "/" + topicName;
@@ -204,7 +205,7 @@ public class PulsarOperator {
     public void forceDeleteTopic(PulsarAdmin pulsarAdmin, PulsarTopicInfo topicInfo) throws PulsarAdminException {
         Preconditions.expectNotNull(topicInfo, "pulsar topic info cannot be empty");
 
-        String tenant = topicInfo.getTenant();
+        String tenant = topicInfo.getPulsarTenant();
         String namespace = topicInfo.getNamespace();
         String topic = topicInfo.getTopicName();
         String fullTopicName = tenant + "/" + namespace + "/" + topic;
@@ -253,7 +254,7 @@ public class PulsarOperator {
             List<String> topicList) throws PulsarAdminException {
         for (String topic : topicList) {
             topicInfo.setTopicName(topic);
-            String fullTopicName = topicInfo.getTenant() + "/" + topicInfo.getNamespace() + "/" + topic;
+            String fullTopicName = topicInfo.getPulsarTenant() + "/" + topicInfo.getNamespace() + "/" + topic;
             this.createSubscription(pulsarAdmin, fullTopicName, topicInfo.getQueueModule(), subscription);
         }
         LOGGER.info("success to create subscription={} for multiple topics={}", subscription, topicList);

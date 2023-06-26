@@ -17,9 +17,6 @@
 
 package org.apache.inlong.manager.service.core.impl;
 
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.ibatis.jdbc.SQL;
 import org.apache.inlong.manager.common.consts.SourceType;
 import org.apache.inlong.manager.common.enums.AuditQuerySource;
 import org.apache.inlong.manager.common.enums.ClusterType;
@@ -36,11 +33,15 @@ import org.apache.inlong.manager.dao.mapper.StreamSourceEntityMapper;
 import org.apache.inlong.manager.pojo.audit.AuditInfo;
 import org.apache.inlong.manager.pojo.audit.AuditRequest;
 import org.apache.inlong.manager.pojo.audit.AuditVO;
+import org.apache.inlong.manager.pojo.user.LoginUserUtils;
 import org.apache.inlong.manager.pojo.user.UserRoleCode;
 import org.apache.inlong.manager.service.core.AuditService;
 import org.apache.inlong.manager.service.resource.sink.ck.ClickHouseConfig;
 import org.apache.inlong.manager.service.resource.sink.es.ElasticsearchApi;
-import org.apache.inlong.manager.service.user.LoginUserUtils;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.ibatis.jdbc.SQL;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.index.query.BoolQueryBuilder;
@@ -63,10 +64,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.PostConstruct;
+
 import java.math.BigDecimal;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.Statement;
+import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -182,10 +185,14 @@ public class AuditServiceImpl implements AuditService {
 
         // for now, we use the first sink type only.
         // this is temporary behavior before multiple sinks in one stream is fully supported.
-        List<StreamSinkEntity> sinkEntityList = sinkEntityMapper.selectByRelatedId(groupId, streamId);
         String sinkNodeType = null;
-        if (CollectionUtils.isNotEmpty(sinkEntityList)) {
+        Integer sinkId = request.getSinkId();
+        if (sinkId == null) {
+            List<StreamSinkEntity> sinkEntityList = sinkEntityMapper.selectByRelatedId(groupId, streamId);
             sinkNodeType = sinkEntityList.get(0).getSinkType();
+        } else {
+            StreamSinkEntity sinkEntity = sinkEntityMapper.selectByPrimaryKey(sinkId);
+            sinkNodeType = sinkEntity.getSinkType();
         }
 
         // properly overwrite audit ids by role and stream config
@@ -233,9 +240,9 @@ public class AuditServiceImpl implements AuditService {
                 }
             } else if (AuditQuerySource.CLICKHOUSE == querySource) {
                 try (Connection connection = ClickHouseConfig.getCkConnection();
-                        Statement statement = connection.createStatement();
-                        ResultSet resultSet = statement.executeQuery(
-                                toAuditCkSql(groupId, streamId, auditId, request.getDt()))) {
+                        PreparedStatement statement =
+                                getAuditCkStatement(connection, groupId, streamId, auditId, request.getDt());
+                        ResultSet resultSet = statement.executeQuery()) {
                     List<AuditInfo> auditSet = new ArrayList<>();
                     while (resultSet.next()) {
                         AuditInfo vo = new AuditInfo();
@@ -253,7 +260,7 @@ public class AuditServiceImpl implements AuditService {
     }
 
     private List<String> getAuditIds(String groupId, String streamId, String sinkNodeType) {
-        Set<String> auditSet = LoginUserUtils.getLoginUser().getRoles().contains(UserRoleCode.ADMIN)
+        Set<String> auditSet = LoginUserUtils.getLoginUser().getRoles().contains(UserRoleCode.TENANT_ADMIN)
                 ? new HashSet<>(auditIdListForAdmin)
                 : new HashSet<>(auditIdListForUser);
 
@@ -302,28 +309,41 @@ public class AuditServiceImpl implements AuditService {
     }
 
     /**
-     * Convert to clickhouse search sql
+     * Get clickhouse Statement
      *
+     * @param connection The ClickHouse connection
      * @param groupId The groupId of inlong
      * @param streamId The streamId of inlong
      * @param auditId The auditId of request
      * @param dt The datetime of request
-     * @return clickhouse sql
+     * @return The clickhouse Statement
      */
-    private String toAuditCkSql(String groupId, String streamId, String auditId, String dt) {
+    private PreparedStatement getAuditCkStatement(Connection connection, String groupId, String streamId,
+            String auditId, String dt) throws SQLException {
         DateTimeFormatter formatter = DateTimeFormat.forPattern(DAY_FORMAT);
         DateTime date = formatter.parseDateTime(dt);
         String startDate = date.toString(SECOND_FORMAT);
         String endDate = date.plusDays(1).toString(SECOND_FORMAT);
-        return new SQL()
+
+        String sql = new SQL()
                 .SELECT("log_ts", "sum(count) as total")
                 .FROM("audit_data")
-                .WHERE("inlong_group_id = '" + groupId + "'", "inlong_stream_id = '" + streamId + "'",
-                        "audit_id = '" + auditId + "'")
-                .WHERE("log_ts >= '" + startDate + "'", "log_ts < '" + endDate + "'")
+                .WHERE("inlong_group_id = ?")
+                .WHERE("inlong_stream_id = ?")
+                .WHERE("audit_id = ?")
+                .WHERE("log_ts >= ?")
+                .WHERE("log_ts < ?")
                 .GROUP_BY("log_ts")
                 .ORDER_BY("log_ts")
                 .toString();
+
+        PreparedStatement statement = connection.prepareStatement(sql);
+        statement.setString(1, groupId);
+        statement.setString(2, streamId);
+        statement.setString(3, auditId);
+        statement.setString(4, startDate);
+        statement.setString(5, endDate);
+        return statement;
     }
 
     /**

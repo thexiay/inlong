@@ -17,24 +17,12 @@
 
 package org.apache.inlong.dataproxy.http;
 
-import static org.apache.inlong.dataproxy.consts.AttrConstants.SEP_HASHTAG;
-import javax.servlet.http.HttpServletRequest;
-import java.io.UnsupportedEncodingException;
-import java.util.HashMap;
-import java.util.Map;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.math.NumberUtils;
-import org.apache.commons.lang3.tuple.Pair;
-import org.apache.flume.ChannelException;
-import org.apache.flume.Event;
-import org.apache.flume.channel.ChannelProcessor;
-import org.apache.flume.event.EventBuilder;
+import org.apache.inlong.common.enums.DataProxyMsgEncType;
 import org.apache.inlong.common.monitor.MonitorIndex;
 import org.apache.inlong.common.monitor.MonitorIndexExt;
 import org.apache.inlong.common.msg.AttributeConstants;
 import org.apache.inlong.common.msg.InLongMsg;
 import org.apache.inlong.common.util.NetworkUtils;
-import org.apache.inlong.dataproxy.config.CommonConfigHolder;
 import org.apache.inlong.dataproxy.config.ConfigManager;
 import org.apache.inlong.dataproxy.consts.AttrConstants;
 import org.apache.inlong.dataproxy.consts.ConfigConstants;
@@ -43,10 +31,26 @@ import org.apache.inlong.dataproxy.metrics.DataProxyMetricItemSet;
 import org.apache.inlong.dataproxy.metrics.audit.AuditUtils;
 import org.apache.inlong.dataproxy.source.ServiceDecoder;
 import org.apache.inlong.dataproxy.utils.DateTimeUtils;
-import org.apache.inlong.dataproxy.utils.InLongMsgVer;
 import org.apache.inlong.dataproxy.utils.MessageUtils;
+import org.apache.inlong.sdk.commons.protocol.EventConstants;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.flume.ChannelException;
+import org.apache.flume.Event;
+import org.apache.flume.channel.ChannelProcessor;
+import org.apache.flume.event.EventBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.servlet.http.HttpServletRequest;
+
+import java.io.UnsupportedEncodingException;
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.apache.inlong.dataproxy.consts.AttrConstants.SEP_HASHTAG;
 
 public class SimpleMessageHandler implements MessageHandler {
 
@@ -97,15 +101,11 @@ public class SimpleMessageHandler implements MessageHandler {
         groupId = groupId.trim();
         streamId = streamId.trim();
         // get topicName
-        String topicName = getTopic(groupId, streamId);
+        String topicName = configManager.getTopicName(groupId, streamId);
         if (StringUtils.isBlank(topicName)) {
-            if (CommonConfigHolder.getInstance().isNoTopicAccept()) {
-                topicName = "test";
-            } else {
-                throw new MessageProcessException(strBuff
-                        .append("Topic for message is null, inlongGroupId = ")
-                        .append(groupId).append(", inlongStreamId = ").append(streamId).toString());
-            }
+            throw new MessageProcessException(strBuff
+                    .append("Topic for message is null, inlongGroupId = ")
+                    .append(groupId).append(", inlongStreamId = ").append(streamId).toString());
         }
         // get message data time
         final long msgRcvTime = System.currentTimeMillis();
@@ -123,12 +123,6 @@ public class SimpleMessageHandler implements MessageHandler {
                     .append(AttrConstants.BODY)
                     .append(" must exist and not empty!").toString());
         }
-        // get m attribute
-        String mxValue = "m=0";
-        String configedMxAttr = configManager.getMxProperties().get(groupId);
-        if (StringUtils.isNotEmpty(configedMxAttr)) {
-            mxValue = configedMxAttr.trim();
-        }
         // convert context to http request
         HttpServletRequest request =
                 (HttpServletRequest) context.get(AttrConstants.HTTP_REQUEST);
@@ -140,7 +134,7 @@ public class SimpleMessageHandler implements MessageHandler {
         strMsgCount = String.valueOf(intMsgCnt);
         // build message attributes
         InLongMsg inLongMsg = InLongMsg.newInLongMsg(true);
-        strBuff.append(mxValue).append("&groupId=").append(groupId)
+        strBuff.append("groupId=").append(groupId)
                 .append("&streamId=").append(streamId)
                 .append("&dt=").append(strDataTime)
                 .append("&NodeIP=").append(strRemoteIP)
@@ -163,7 +157,10 @@ public class SimpleMessageHandler implements MessageHandler {
         headers.put(ConfigConstants.REMOTE_IP_KEY, strRemoteIP);
         headers.put(ConfigConstants.REMOTE_IDC_KEY, DEFAULT_REMOTE_IDC_VALUE);
         headers.put(ConfigConstants.MSG_COUNTER_KEY, strMsgCount);
-        headers.put(ConfigConstants.MSG_ENCODE_VER, InLongMsgVer.INLONG_V0.getName());
+        headers.put(ConfigConstants.MSG_ENCODE_VER,
+                DataProxyMsgEncType.MSG_ENCODE_TYPE_INLONGMSG.getStrId());
+        headers.put(EventConstants.HEADER_KEY_VERSION,
+                DataProxyMsgEncType.MSG_ENCODE_TYPE_INLONGMSG.getStrId());
         byte[] data = inLongMsg.buildArray();
         headers.put(AttributeConstants.RCV_TIME, String.valueOf(msgRcvTime));
         Event event = EventBuilder.withBody(data, headers);
@@ -173,7 +170,7 @@ public class SimpleMessageHandler implements MessageHandler {
         // build metric data item
         longDataTime = longDataTime / 1000 / 60 / 10;
         longDataTime = longDataTime * 1000 * 60 * 10;
-        strBuff.append("http").append(SEP_HASHTAG).append(topicName).append(SEP_HASHTAG)
+        strBuff.append("http").append(SEP_HASHTAG).append(groupId).append(SEP_HASHTAG)
                 .append(streamId).append(SEP_HASHTAG).append(strRemoteIP).append(SEP_HASHTAG)
                 .append(NetworkUtils.getLocalIp()).append(SEP_HASHTAG)
                 .append(evenProcType.getRight()).append(SEP_HASHTAG)
@@ -218,20 +215,6 @@ public class SimpleMessageHandler implements MessageHandler {
 
     @Override
     public void configure(org.apache.flume.Context context) {
-    }
-
-    private String getTopic(String groupId, String streamId) {
-        String topic = null;
-        if (StringUtils.isNotEmpty(groupId)) {
-            if (StringUtils.isNotEmpty(streamId)) {
-                topic = configManager.getTopicProperties().get(groupId + "/" + streamId);
-            }
-            if (StringUtils.isEmpty(topic)) {
-                topic = configManager.getTopicProperties().get(groupId);
-            }
-        }
-        LOG.debug("Get topic by groupId/streamId = {}, topic = {}", groupId + "/" + streamId, topic);
-        return topic;
     }
 
     /**

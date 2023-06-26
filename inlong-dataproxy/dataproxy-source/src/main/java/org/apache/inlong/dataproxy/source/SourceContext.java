@@ -17,25 +17,20 @@
 
 package org.apache.inlong.dataproxy.source;
 
-import com.google.common.base.Preconditions;
+import org.apache.inlong.common.metric.MetricRegister;
+import org.apache.inlong.dataproxy.config.CommonConfigHolder;
+import org.apache.inlong.dataproxy.consts.ConfigConstants;
+import org.apache.inlong.dataproxy.metrics.DataProxyMetricItemSet;
 
+import com.google.common.base.Preconditions;
+import io.netty.channel.group.ChannelGroup;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.flume.Context;
 import org.apache.flume.source.AbstractSource;
-import org.apache.inlong.common.metric.MetricRegister;
-import org.apache.inlong.dataproxy.config.CommonConfigHolder;
-import org.apache.inlong.dataproxy.config.holder.IdTopicConfigHolder;
-import org.apache.inlong.dataproxy.consts.ConfigConstants;
-import org.apache.inlong.dataproxy.metrics.DataProxyMetricItemSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Date;
 import java.util.Map;
-import java.util.Timer;
-import java.util.TimerTask;
-
-import io.netty.channel.group.ChannelGroup;
 
 /**
  * 
@@ -64,12 +59,10 @@ public class SourceContext {
     protected int maxConnections = Integer.MAX_VALUE;
     protected int maxMsgLength;
     // metric
-    protected IdTopicConfigHolder idHolder;
     protected DataProxyMetricItemSet metricItemSet;
     // reload
     protected Context parentContext;
     protected long reloadInterval;
-    protected Timer reloadTimer;
     // isRejectService
     protected boolean isRejectService = false;
 
@@ -99,9 +92,6 @@ public class SourceContext {
         this.hostIp = this.getHostIp(context);
         this.hostPort = this.getHostPort(context);
         this.sourceDataId = String.valueOf(hostPort);
-        // id topic
-        this.idHolder = new IdTopicConfigHolder();
-        this.idHolder.configure(context);
         //
         this.parentContext = context;
         this.reloadInterval = context.getLong(KEY_RELOADINTERVAL, 60000L);
@@ -141,48 +131,14 @@ public class SourceContext {
      * start
      */
     public void start() {
-        try {
-            this.reload();
-            this.setReloadTimer();
-        } catch (Exception e) {
-            LOG.error(e.getMessage(), e);
-        }
+
     }
 
     /**
      * close
      */
     public void close() {
-        try {
-            this.reloadTimer.cancel();
-        } catch (Exception e) {
-            LOG.error(e.getMessage(), e);
-        }
-    }
 
-    /**
-     * setReloadTimer
-     */
-    protected void setReloadTimer() {
-        reloadTimer = new Timer(true);
-        TimerTask task = new TimerTask() {
-
-            public void run() {
-                reload();
-            }
-        };
-        reloadTimer.schedule(task, new Date(System.currentTimeMillis() + reloadInterval), reloadInterval);
-    }
-
-    /**
-     * reload
-     */
-    public void reload() {
-        try {
-            this.idHolder.reload();
-        } catch (Throwable e) {
-            LOG.error(e.getMessage(), e);
-        }
     }
 
     /**
@@ -255,15 +211,6 @@ public class SourceContext {
      */
     public int getMaxMsgLength() {
         return maxMsgLength;
-    }
-
-    /**
-     * get idHolder
-     * 
-     * @return the idHolder
-     */
-    public IdTopicConfigHolder getIdHolder() {
-        return idHolder;
     }
 
     /**

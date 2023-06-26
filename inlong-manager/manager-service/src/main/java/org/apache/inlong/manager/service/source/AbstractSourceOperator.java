@@ -17,9 +17,6 @@
 
 package org.apache.inlong.manager.service.source;
 
-import com.github.pagehelper.Page;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.inlong.common.enums.DataTypeEnum;
 import org.apache.inlong.manager.common.consts.InlongConstants;
 import org.apache.inlong.manager.common.consts.SourceType;
@@ -38,6 +35,10 @@ import org.apache.inlong.manager.pojo.common.PageResult;
 import org.apache.inlong.manager.pojo.source.SourceRequest;
 import org.apache.inlong.manager.pojo.source.StreamSource;
 import org.apache.inlong.manager.pojo.stream.StreamField;
+
+import com.github.pagehelper.Page;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -130,7 +131,7 @@ public abstract class AbstractSourceOperator implements StreamSourceOperator {
             updateFieldOpt(entity, request.getFieldList());
             return;
         }
-        boolean allowUpdate = InlongConstants.LIGHTWEIGHT_MODE.equals(groupMode)
+        boolean allowUpdate = InlongConstants.DATASYNC_MODE.equals(groupMode)
                 || SourceStatus.ALLOWED_UPDATE.contains(entity.getStatus());
         if (!allowUpdate) {
             throw new BusinessException(ErrorCodeEnum.SOURCE_OPT_NOT_ALLOWED,
@@ -167,26 +168,29 @@ public abstract class AbstractSourceOperator implements StreamSourceOperator {
         // setting updated parameters of stream source entity.
         setTargetEntity(request, entity);
         entity.setModifier(operator);
-
         entity.setPreviousStatus(entity.getStatus());
 
         // re-issue task if necessary
         if (InlongConstants.STANDARD_MODE.equals(groupMode)) {
+            SourceStatus sourceStatus = SourceStatus.forCode(entity.getStatus());
+            Integer nextStatus = entity.getStatus();
             if (GroupStatus.forCode(groupStatus).equals(GroupStatus.CONFIG_SUCCESSFUL)) {
-                entity.setStatus(SourceStatus.TO_BE_ISSUED_RETRY.getCode());
+                nextStatus = SourceStatus.TO_BE_ISSUED_RETRY.getCode();
             } else {
                 switch (SourceStatus.forCode(entity.getStatus())) {
                     case SOURCE_NORMAL:
-                        entity.setStatus(SourceStatus.TO_BE_ISSUED_RETRY.getCode());
+                    case HEARTBEAT_TIMEOUT:
+                        nextStatus = SourceStatus.TO_BE_ISSUED_RETRY.getCode();
                         break;
                     case SOURCE_FAILED:
-                        entity.setStatus(SourceStatus.SOURCE_NEW.getCode());
+                        nextStatus = SourceStatus.SOURCE_NEW.getCode();
                         break;
                     default:
                         // others leave it be
                         break;
                 }
             }
+            entity.setStatus(nextStatus);
         }
 
         int rowCount = sourceMapper.updateByPrimaryKeySelective(entity);

@@ -17,12 +17,6 @@
 
 package org.apache.inlong.manager.service.core.impl;
 
-import com.google.common.base.Joiner;
-import com.google.common.collect.Lists;
-import com.google.gson.Gson;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.inlong.common.constant.Constants;
 import org.apache.inlong.common.constant.MQType;
 import org.apache.inlong.common.db.CommandEntity;
@@ -63,14 +57,25 @@ import org.apache.inlong.manager.pojo.group.pulsar.InlongPulsarDTO;
 import org.apache.inlong.manager.pojo.source.file.FileSourceDTO;
 import org.apache.inlong.manager.service.core.AgentService;
 import org.apache.inlong.manager.service.source.SourceSnapshotOperator;
+
+import com.google.common.base.Joiner;
+import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.google.gson.Gson;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.common.util.set.Sets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
+import javax.annotation.PostConstruct;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -81,6 +86,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -98,7 +111,24 @@ public class AgentServiceImpl implements AgentService {
     private static final int MODULUS_100 = 100;
     private static final int TASK_FETCH_SIZE = 2;
     private static final Gson GSON = new Gson();
-
+    private final ExecutorService executorService = new ThreadPoolExecutor(
+            5,
+            10,
+            10L,
+            TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(100),
+            new ThreadFactoryBuilder().setNameFormat("async-agent-%s").build(),
+            new CallerRunsPolicy());
+    @Value("${source.update.enabled:false}")
+    private Boolean updateTaskTimeoutEnabled;
+    @Value("${source.update.before.seconds:60}")
+    private Integer beforeSeconds;
+    @Value("${source.update.interval:60}")
+    private Integer updateTaskInterval;
+    @Value("${source.cleansing.enabled:false}")
+    private Boolean sourceCleanEnabled;
+    @Value("${source.cleansing.interval:600}")
+    private Integer cleanInterval;
     @Autowired
     private StreamSourceEntityMapper sourceMapper;
     @Autowired
@@ -114,6 +144,45 @@ public class AgentServiceImpl implements AgentService {
     @Autowired
     private InlongClusterNodeEntityMapper clusterNodeMapper;
 
+    /**
+     * Start the update task
+     */
+    @PostConstruct
+    private void startHeartbeatTask() {
+        if (updateTaskTimeoutEnabled) {
+            ThreadFactory factory = new ThreadFactoryBuilder()
+                    .setNameFormat("scheduled-source-timeout-%d")
+                    .setDaemon(true)
+                    .build();
+            ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(factory);
+            executor.scheduleWithFixedDelay(() -> {
+                try {
+                    sourceMapper.updateStatusToTimeout(beforeSeconds);
+                    LOGGER.info("update task status successfully");
+                } catch (Throwable t) {
+                    LOGGER.error("update task status error", t);
+                }
+            }, 0, updateTaskInterval, TimeUnit.SECONDS);
+            LOGGER.info("update task status started successfully");
+        }
+        if (sourceCleanEnabled) {
+            ThreadFactory factory = new ThreadFactoryBuilder()
+                    .setNameFormat("scheduled-source-deleted-%d")
+                    .setDaemon(true)
+                    .build();
+            ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(factory);
+            executor.scheduleWithFixedDelay(() -> {
+                try {
+                    sourceMapper.updateStatusByDeleted();
+                    LOGGER.info("clean task successfully");
+                } catch (Throwable t) {
+                    LOGGER.error("clean task error", t);
+                }
+            }, 0, cleanInterval, TimeUnit.SECONDS);
+            LOGGER.info("clean task started successfully");
+        }
+    }
+
     @Override
     public Boolean reportSnapshot(TaskSnapshotRequest request) {
         return snapshotOperator.snapshot(request);
@@ -128,6 +197,8 @@ public class AgentServiceImpl implements AgentService {
         if (request == null || StringUtils.isBlank(request.getAgentIp())) {
             throw new BusinessException("agent request or agent ip was empty, just return");
         }
+
+        preTimeoutTasks(request);
 
         // Update task status, other tasks with status 20x will change to 30x in next request
         if (CollectionUtils.isEmpty(request.getCommandInfo())) {
@@ -422,17 +493,22 @@ public class AgentServiceImpl implements AgentService {
         });
     }
 
+    private void preTimeoutTasks(TaskRequest taskRequest) {
+        // If the agent report succeeds, restore the source status
+        List<Integer> needUpdateIds = sourceMapper.selectHeartbeatTimeoutIds(null, taskRequest.getAgentIp(),
+                taskRequest.getClusterName());
+        // restore state for all source by ip and type
+        if (CollectionUtils.isNotEmpty(needUpdateIds)) {
+            sourceMapper.rollbackTimeoutStatusByIds(needUpdateIds, null);
+        }
+    }
+
     private InlongClusterNodeEntity selectByIpAndCluster(String clusterName, String ip) {
         InlongClusterEntity clusterEntity = clusterMapper.selectByNameAndType(clusterName, ClusterType.AGENT);
         if (clusterEntity == null) {
             return null;
         }
-
-        ClusterPageRequest nodeRequest = new ClusterPageRequest();
-        nodeRequest.setKeyword(ip);
-        nodeRequest.setParentId(clusterEntity.getId());
-        nodeRequest.setType(ClusterType.AGENT);
-        return clusterNodeMapper.selectByCondition(nodeRequest).stream().findFirst().orElse(null);
+        return clusterNodeMapper.selectByParentIdAndIp(clusterEntity.getId(), ip).stream().findFirst().orElse(null);
     }
 
     private int getOp(int status) {
@@ -504,13 +580,13 @@ public class AgentServiceImpl implements AgentService {
                 if (MQType.PULSAR.equals(mqType) || MQType.TDMQ_PULSAR.equals(mqType)) {
                     // first get the tenant from the InlongGroup, and then get it from the PulsarCluster.
                     InlongPulsarDTO pulsarDTO = InlongPulsarDTO.getFromJson(groupEntity.getExtParams());
-                    String tenant = pulsarDTO.getTenant();
+                    String tenant = pulsarDTO.getPulsarTenant();
                     if (StringUtils.isBlank(tenant)) {
                         // If there are multiple Pulsar clusters, take the first one.
                         // Note that the tenants in multiple Pulsar clusters must be identical.
                         PulsarClusterDTO pulsarCluster = PulsarClusterDTO.getFromJson(
                                 mqClusterList.get(0).getExtParams());
-                        tenant = pulsarCluster.getTenant();
+                        tenant = pulsarCluster.getPulsarTenant();
                     }
 
                     String topic = String.format(InlongConstants.PULSAR_TOPIC_FORMAT,

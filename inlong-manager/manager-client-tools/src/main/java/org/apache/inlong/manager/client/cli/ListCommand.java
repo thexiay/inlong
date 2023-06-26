@@ -17,8 +17,6 @@
 
 package org.apache.inlong.manager.client.cli;
 
-import com.beust.jcommander.Parameter;
-import com.beust.jcommander.Parameters;
 import org.apache.inlong.manager.client.api.inner.client.InlongClusterClient;
 import org.apache.inlong.manager.client.api.inner.client.InlongGroupClient;
 import org.apache.inlong.manager.client.api.inner.client.InlongStreamClient;
@@ -38,7 +36,7 @@ import org.apache.inlong.manager.client.cli.util.PrintUtils;
 import org.apache.inlong.manager.client.cli.validator.ClusterTypeValidator;
 import org.apache.inlong.manager.client.cli.validator.UserTypeValidator;
 import org.apache.inlong.manager.common.enums.SimpleGroupStatus;
-import org.apache.inlong.manager.common.enums.UserTypeEnum;
+import org.apache.inlong.manager.common.enums.TenantUserTypeEnum;
 import org.apache.inlong.manager.pojo.cluster.ClusterInfo;
 import org.apache.inlong.manager.pojo.cluster.ClusterNodeResponse;
 import org.apache.inlong.manager.pojo.cluster.ClusterPageRequest;
@@ -53,6 +51,9 @@ import org.apache.inlong.manager.pojo.stream.InlongStreamInfo;
 import org.apache.inlong.manager.pojo.transform.TransformResponse;
 import org.apache.inlong.manager.pojo.user.UserInfo;
 import org.apache.inlong.manager.pojo.user.UserRequest;
+
+import com.beust.jcommander.Parameter;
+import com.beust.jcommander.Parameters;
 
 import java.util.List;
 
@@ -318,7 +319,7 @@ public class ListCommand extends AbstractCommand {
             try {
                 ClientUtils.initClientFactory();
                 UserRequest request = new UserRequest();
-                Integer integer = UserTypeEnum.parseName(type);
+                Integer integer = TenantUserTypeEnum.parseName(type);
                 request.setAccountType(integer);
                 request.setKeyword(username);
                 UserClient userClient = ClientUtils.clientFactory.getUserClient();

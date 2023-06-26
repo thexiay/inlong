@@ -26,6 +26,7 @@ import {
   DeploymentUnitOutlined,
   SafetyOutlined,
   ShopOutlined,
+  InteractionOutlined,
 } from '@ant-design/icons';
 import type { MenuItemType } from '.';
 
@@ -36,9 +37,19 @@ const conf: MenuItemType[] = [
     icon: <ApiOutlined />,
   },
   {
+    path: '/sync',
+    name: i18n.t('configs.menus.DataSynchronize'),
+    icon: <InteractionOutlined />,
+  },
+  {
     path: '/consume',
     name: i18n.t('configs.menus.Subscribe'),
     icon: <ShopOutlined />,
+  },
+  {
+    path: '/node',
+    name: i18n.t('configs.menus.Nodes'),
+    icon: <DatabaseOutlined />,
   },
   {
     name: i18n.t('configs.menus.Clusters'),
@@ -53,11 +64,6 @@ const conf: MenuItemType[] = [
         name: i18n.t('configs.menus.ClusterTags'),
       },
     ],
-  },
-  {
-    path: '/node',
-    name: i18n.t('configs.menus.Nodes'),
-    icon: <DatabaseOutlined />,
   },
   {
     path: '/process',

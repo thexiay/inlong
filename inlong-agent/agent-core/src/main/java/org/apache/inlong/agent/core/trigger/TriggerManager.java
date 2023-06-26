@@ -17,8 +17,6 @@
 
 package org.apache.inlong.agent.core.trigger;
 
-import com.google.common.base.Preconditions;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.inlong.agent.common.AbstractDaemon;
 import org.apache.inlong.agent.conf.AgentConfiguration;
 import org.apache.inlong.agent.conf.JobProfile;
@@ -30,6 +28,9 @@ import org.apache.inlong.agent.core.job.JobWrapper;
 import org.apache.inlong.agent.db.TriggerProfileDb;
 import org.apache.inlong.agent.plugin.Trigger;
 import org.apache.inlong.agent.utils.ThreadUtils;
+
+import com.google.common.base.Preconditions;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,7 +77,7 @@ public class TriggerManager extends AbstractDaemon {
             Trigger trigger = (Trigger) triggerClass.newInstance();
             String triggerId = triggerProfile.get(JOB_ID);
             if (triggerMap.containsKey(triggerId)) {
-                deleteTrigger(triggerId);
+                deleteTrigger(triggerId, false);
                 LOGGER.warn("trigger {} is running, stop it", triggerId);
             }
             triggerMap.put(triggerId, trigger);
@@ -101,7 +102,7 @@ public class TriggerManager extends AbstractDaemon {
      *
      * @param triggerProfile trigger profile
      */
-    public void submitTrigger(TriggerProfile triggerProfile) {
+    public void submitTrigger(TriggerProfile triggerProfile, boolean isNewJob) {
         // make sure all required key exists.
         if (!triggerProfile.allRequiredKeyExist() || this.triggerMap.size() > maxRunningNum) {
             throw new IllegalArgumentException(
@@ -117,7 +118,7 @@ public class TriggerManager extends AbstractDaemon {
 
         LOGGER.info("submit trigger {}", triggerProfile.toJsonStr());
         // This action must be done before saving in db, because the job.instance.id is needed for the next recovery
-        manager.getJobManager().submitJobProfile(triggerProfile, true);
+        manager.getJobManager().submitJobProfile(triggerProfile, true, isNewJob);
         triggerProfileDB.storeTrigger(triggerProfile);
         restoreTrigger(triggerProfile);
     }
@@ -129,7 +130,7 @@ public class TriggerManager extends AbstractDaemon {
      *
      * @param triggerId trigger profile.
      */
-    public void deleteTrigger(String triggerId) {
+    public void deleteTrigger(String triggerId, boolean isFrozen) {
         // repeat check
         if (!triggerProfileDB.getTriggers().stream()
                 .anyMatch(profile -> profile.getTriggerId().equals(triggerId))) {
@@ -139,7 +140,7 @@ public class TriggerManager extends AbstractDaemon {
         LOGGER.info("delete trigger {}", triggerId);
         Trigger trigger = triggerMap.remove(triggerId);
         if (trigger != null) {
-            manager.getJobManager().deleteJob(trigger.getTriggerProfile().getInstanceId());
+            manager.getJobManager().deleteJob(trigger.getTriggerProfile().getInstanceId(), isFrozen);
             trigger.destroy();
         }
         triggerProfileDB.deleteTrigger(triggerId);
@@ -157,6 +158,10 @@ public class TriggerManager extends AbstractDaemon {
                         if (profile != null) {
                             Map<String, JobWrapper> jobWrapperMap = manager.getJobManager().getJobs();
                             JobWrapper job = jobWrapperMap.get(trigger.getTriggerProfile().getInstanceId());
+                            if (job == null) {
+                                LOGGER.error("job {} should not be null", trigger.getTriggerProfile().getInstanceId());
+                                return;
+                            }
                             String subTaskFile = profile.getOrDefault(JobConstants.JOB_DIR_FILTER_PATTERNS, "");
                             Preconditions.checkArgument(StringUtils.isNotBlank(subTaskFile),
                                     String.format("Trigger %s fetched task file should not be null.", s));

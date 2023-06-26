@@ -17,6 +17,14 @@
 
 package org.apache.inlong.audit.source;
 
+import org.apache.inlong.audit.protocol.AuditApi.AuditMessageBody;
+import org.apache.inlong.audit.protocol.AuditApi.AuditReply;
+import org.apache.inlong.audit.protocol.AuditApi.AuditReply.RSP_CODE;
+import org.apache.inlong.audit.protocol.AuditApi.AuditRequest;
+import org.apache.inlong.audit.protocol.AuditApi.BaseCommand;
+import org.apache.inlong.audit.protocol.AuditData;
+import org.apache.inlong.audit.protocol.Commands;
+
 import com.google.gson.Gson;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
@@ -27,13 +35,6 @@ import org.apache.flume.Event;
 import org.apache.flume.channel.ChannelProcessor;
 import org.apache.flume.event.EventBuilder;
 import org.apache.flume.source.AbstractSource;
-import org.apache.inlong.audit.protocol.AuditApi.AuditMessageBody;
-import org.apache.inlong.audit.protocol.AuditApi.AuditReply;
-import org.apache.inlong.audit.protocol.AuditApi.AuditReply.RSP_CODE;
-import org.apache.inlong.audit.protocol.AuditApi.AuditRequest;
-import org.apache.inlong.audit.protocol.AuditApi.BaseCommand;
-import org.apache.inlong.audit.protocol.AuditData;
-import org.apache.inlong.audit.protocol.Commands;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,6 +103,8 @@ public class ServerMessageHandler extends ChannelInboundHandlerAdapter {
         } catch (Exception ex) {
             LOGGER.error("extract data error: ", ex);
             throw new IOException(ex);
+        } finally {
+            buf.release();
         }
         if (cmd == null) {
             LOGGER.warn("extract data from received msg is null");
@@ -189,6 +192,8 @@ public class ServerMessageHandler extends ChannelInboundHandlerAdapter {
             channel.writeAndFlush(buffer);
             return;
         }
+
+        buffer.release();
 
         String msg = String.format("remote channel=%s is not writable, please check remote client!", channel);
         LOGGER.warn(msg);

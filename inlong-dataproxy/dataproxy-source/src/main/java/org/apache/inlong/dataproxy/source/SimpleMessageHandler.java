@@ -17,33 +17,7 @@
 
 package org.apache.inlong.dataproxy.source;
 
-import static org.apache.inlong.dataproxy.consts.ConfigConstants.SLA_METRIC_DATA;
-import static org.apache.inlong.dataproxy.consts.ConfigConstants.SLA_METRIC_GROUPID;
-
-import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
-import java.io.IOException;
-import java.net.SocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.group.ChannelGroup;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.math.NumberUtils;
-import org.apache.flume.ChannelException;
-import org.apache.flume.Event;
-import org.apache.flume.channel.ChannelProcessor;
-import org.apache.flume.event.EventBuilder;
+import org.apache.inlong.common.enums.DataProxyMsgEncType;
 import org.apache.inlong.common.msg.AttributeConstants;
 import org.apache.inlong.common.msg.InLongMsg;
 import org.apache.inlong.common.msg.MsgType;
@@ -57,9 +31,38 @@ import org.apache.inlong.dataproxy.metrics.DataProxyMetricItemSet;
 import org.apache.inlong.dataproxy.metrics.audit.AuditUtils;
 import org.apache.inlong.dataproxy.utils.AddressUtils;
 import org.apache.inlong.dataproxy.utils.Constants;
-import org.apache.inlong.dataproxy.utils.InLongMsgVer;
+import org.apache.inlong.sdk.commons.protocol.EventConstants;
+
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.group.ChannelGroup;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
+import org.apache.flume.ChannelException;
+import org.apache.flume.Event;
+import org.apache.flume.channel.ChannelProcessor;
+import org.apache.flume.event.EventBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.apache.inlong.dataproxy.consts.ConfigConstants.SLA_METRIC_DATA;
+import static org.apache.inlong.dataproxy.consts.ConfigConstants.SLA_METRIC_GROUPID;
 
 /**
  * Server message handler
@@ -217,34 +220,22 @@ public class SimpleMessageHandler extends ChannelInboundHandlerAdapter {
         String streamId = message.getStreamId();
         if (null != groupId) {
 
-            String value = getTopic(groupId, streamId);
+            String value = configManager.getTopicName(groupId, streamId);
             if (StringUtils.isNotEmpty(value)) {
                 topicInfo.set(value.trim());
-            }
-
-            Map<String, String> mxValue = configManager.getMxPropertiesMaps().get(groupId);
-            if (mxValue != null && mxValue.size() != 0) {
-                message.getAttributeMap().putAll(mxValue);
-            } else {
-                message.getAttributeMap().putAll(mapSplitter.split(this.defaultMXAttr));
             }
         } else {
             String num2name = commonAttrMap.get(AttrConstants.NUM2NAME);
             String groupIdNum = commonAttrMap.get(AttrConstants.GROUPID_NUM);
             String streamIdNum = commonAttrMap.get(AttrConstants.STREAMID_NUM);
 
-            if (configManager.getGroupIdMappingProperties() != null
-                    && configManager.getStreamIdMappingProperties() != null) {
-                groupId = configManager.getGroupIdMappingProperties().get(groupIdNum);
-                streamId = (configManager.getStreamIdMappingProperties().get(groupIdNum) == null)
-                        ? null
-                        : configManager.getStreamIdMappingProperties().get(groupIdNum).get(streamIdNum);
+            if (!configManager.isGroupIdNumConfigEmpty()
+                    && !configManager.isStreamIdNumConfigEmpty()) {
+                groupId = configManager.getGroupIdNameByNum(groupIdNum);
+                streamId = configManager.getStreamIdNameByIdNum(groupIdNum, streamIdNum);
                 if (groupId != null && streamId != null) {
-                    String enableTrans = (configManager.getGroupIdEnableMappingProperties() == null)
-                            ? null
-                            : configManager.getGroupIdEnableMappingProperties().get(groupIdNum);
-                    if (("TRUE".equalsIgnoreCase(enableTrans) && "TRUE"
-                            .equalsIgnoreCase(num2name))) {
+                    if ((configManager.isEnableNum2NameTrans(groupIdNum)
+                            && "TRUE".equalsIgnoreCase(num2name))) {
                         String extraAttr = "groupId=" + groupId + "&" + "streamId=" + streamId;
                         message.setData(newBinMsg(message.getData(), extraAttr));
                     }
@@ -254,7 +245,7 @@ public class SimpleMessageHandler extends ChannelInboundHandlerAdapter {
                     message.setGroupId(groupId);
                     message.setStreamId(streamId);
 
-                    String value = getTopic(groupId, streamId);
+                    String value = configManager.getTopicName(groupId, streamId);
                     if (StringUtils.isNotEmpty(value)) {
                         topicInfo.set(value.trim());
                     }
@@ -436,9 +427,9 @@ public class SimpleMessageHandler extends ChannelInboundHandlerAdapter {
                 commonHeaders.get(AttributeConstants.DATA_TIME));
         headers.put(Constants.HEADER_KEY_SOURCE_IP,
                 commonHeaders.get(AttributeConstants.NODE_IP));
-        headers.put(ConfigConstants.MSG_ENCODE_VER, InLongMsgVer.INLONG_V1.getName());
-        Event event = EventBuilder.withBody(proxyMessage.getData(), headers);
-        return event;
+        headers.put(ConfigConstants.MSG_ENCODE_VER, DataProxyMsgEncType.MSG_ENCODE_TYPE_PB.getStrId());
+        headers.put(EventConstants.HEADER_KEY_VERSION, DataProxyMsgEncType.MSG_ENCODE_TYPE_PB.getStrId());
+        return EventBuilder.withBody(proxyMessage.getData(), headers);
     }
 
     private void responsePackage(Map<String, String> commonAttrMap,
@@ -653,30 +644,6 @@ public class SimpleMessageHandler extends ChannelInboundHandlerAdapter {
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         logger.error("channel inactive {}", ctx.channel());
         ctx.fireChannelInactive();
-    }
-
-    /**
-     * get topic
-     */
-    private String getTopic(String groupId) {
-        return getTopic(groupId, null);
-    }
-
-    /**
-     * get topic
-     */
-    private String getTopic(String groupId, String streamId) {
-        String topic = null;
-        if (StringUtils.isNotEmpty(groupId)) {
-            if (StringUtils.isNotEmpty(streamId)) {
-                topic = configManager.getTopicProperties().get(groupId + "/" + streamId);
-            }
-            if (StringUtils.isEmpty(topic)) {
-                topic = configManager.getTopicProperties().get(groupId);
-            }
-        }
-        logger.debug("Get topic by groupId = {} , streamId = {}", groupId, streamId);
-        return topic;
     }
 
     /**

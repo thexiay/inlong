@@ -17,18 +17,20 @@
 
 package org.apache.inlong.sort.parser;
 
+import org.apache.inlong.sort.parser.impl.NativeFlinkSqlParser;
+import org.apache.inlong.sort.parser.result.ParseResult;
+
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.inlong.sort.parser.impl.NativeFlinkSqlParser;
-import org.apache.inlong.sort.parser.result.ParseResult;
+import org.apache.flink.test.util.AbstractTestBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 /**
  * Test for {@link NativeFlinkSqlParser}
  */
-public class NativeFlinkSqlParserTest {
+public class NativeFlinkSqlParserTest extends AbstractTestBase {
 
     @Test
     public void testNativeFlinkSqlParser() throws Exception {

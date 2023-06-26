@@ -17,9 +17,10 @@
 
 package org.apache.inlong.manager.dao.mapper;
 
-import org.apache.ibatis.annotations.Param;
 import org.apache.inlong.manager.dao.entity.ComponentHeartbeatEntity;
 import org.apache.inlong.manager.pojo.heartbeat.HeartbeatPageRequest;
+
+import org.apache.ibatis.annotations.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -36,6 +37,16 @@ public interface ComponentHeartbeatEntityMapper {
     ComponentHeartbeatEntity selectByKey(@Param("component") String component, @Param("instance") String instance);
 
     List<ComponentHeartbeatEntity> selectByCondition(@Param("request") HeartbeatPageRequest request);
+
+    /**
+     * Get the heartbeat by heartbeat interval
+     *
+     * @param component component type
+     * @param instance component address
+     * @param beforeSeconds the modified time was beforeSeconds seconds ago
+     */
+    ComponentHeartbeatEntity selectTimeOutHeartBeat(@Param("component") String component,
+            @Param("instance") String instance, @Param("beforeSeconds") Long beforeSeconds);
 
     int deleteByPrimaryKey(Integer id);
 

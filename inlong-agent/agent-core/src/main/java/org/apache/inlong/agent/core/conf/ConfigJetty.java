@@ -24,6 +24,7 @@ import org.apache.inlong.agent.constant.AgentConstants;
 import org.apache.inlong.agent.core.job.JobManager;
 import org.apache.inlong.agent.core.trigger.TriggerManager;
 import org.apache.inlong.common.enums.TaskTypeEnum;
+
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
@@ -88,7 +89,7 @@ public class ConfigJetty implements Closeable {
             // trigger job is a special kind of job
             if (jobProfile.hasKey(JOB_TRIGGER)) {
                 triggerManager.submitTrigger(
-                        TriggerProfile.parseJsonStr(jobProfile.toJsonStr()));
+                        TriggerProfile.parseJsonStr(jobProfile.toJsonStr()), true);
             } else {
                 TaskTypeEnum taskType = TaskTypeEnum
                         .getTaskType(jobProfile.getInt(JOB_SOURCE_TYPE));
@@ -99,7 +100,7 @@ public class ConfigJetty implements Closeable {
                     case KAFKA:
                     case BINLOG:
                     case SQL:
-                        jobManager.submitJobProfile(jobProfile, true);
+                        jobManager.submitJobProfile(jobProfile, true, true);
                         break;
                     default:
                         LOGGER.error("source type not supported {}", taskType);
@@ -123,9 +124,9 @@ public class ConfigJetty implements Closeable {
     public void deleteJobConf(JobProfile jobProfile) {
         if (jobProfile != null) {
             if (jobProfile.hasKey(JOB_TRIGGER)) {
-                triggerManager.deleteTrigger(TriggerProfile.parseJobProfile(jobProfile).getTriggerId());
+                triggerManager.deleteTrigger(TriggerProfile.parseJobProfile(jobProfile).getTriggerId(), false);
             } else {
-                jobManager.deleteJob(jobProfile.getInstanceId());
+                jobManager.deleteJob(jobProfile.getInstanceId(), false);
             }
         }
     }

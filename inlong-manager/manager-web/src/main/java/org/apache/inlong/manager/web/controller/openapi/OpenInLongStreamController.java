@@ -26,9 +26,14 @@ import org.apache.inlong.manager.pojo.stream.InlongStreamBriefInfo;
 import org.apache.inlong.manager.pojo.stream.InlongStreamInfo;
 import org.apache.inlong.manager.pojo.stream.InlongStreamPageRequest;
 import org.apache.inlong.manager.pojo.stream.InlongStreamRequest;
+import org.apache.inlong.manager.pojo.user.LoginUserUtils;
 import org.apache.inlong.manager.service.operationlog.OperationLog;
 import org.apache.inlong.manager.service.stream.InlongStreamService;
-import org.apache.inlong.manager.service.user.LoginUserUtils;
+
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,11 +43,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
-import io.swagger.annotations.ApiOperation;
 
 /**
  * Open InLong Stream controller
@@ -66,6 +66,20 @@ public class OpenInLongStreamController {
         Preconditions.expectNotBlank(streamId, ErrorCodeEnum.INVALID_PARAMETER, "streamId cannot be blank");
         Preconditions.expectNotNull(LoginUserUtils.getLoginUser(), ErrorCodeEnum.LOGIN_USER_EMPTY);
         return Response.success(streamService.get(groupId, streamId, LoginUserUtils.getLoginUser()));
+    }
+
+    @RequestMapping(value = "/stream/getBrief", method = RequestMethod.GET)
+    @ApiOperation(value = "Get inlong stream brief")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "groupId", dataTypeClass = String.class, required = true),
+            @ApiImplicitParam(name = "streamId", dataTypeClass = String.class, required = true)
+    })
+    public Response<InlongStreamBriefInfo> getBrief(@RequestParam String groupId, @RequestParam String streamId) {
+        Preconditions.expectNotBlank(groupId, ErrorCodeEnum.INVALID_PARAMETER, "groupId cannot be blank");
+        Preconditions.expectNotBlank(streamId, ErrorCodeEnum.INVALID_PARAMETER, "streamId cannot be blank");
+        Preconditions.expectNotNull(LoginUserUtils.getLoginUser(), ErrorCodeEnum.LOGIN_USER_EMPTY);
+        String operator = LoginUserUtils.getLoginUser().getName();
+        return Response.success(streamService.getBrief(groupId, streamId, operator));
     }
 
     @RequestMapping(value = "/stream/list", method = RequestMethod.POST)

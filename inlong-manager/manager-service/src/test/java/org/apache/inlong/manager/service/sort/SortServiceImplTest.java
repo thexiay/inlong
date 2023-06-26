@@ -46,6 +46,7 @@ import org.apache.inlong.manager.service.group.InlongGroupService;
 import org.apache.inlong.manager.service.node.DataNodeService;
 import org.apache.inlong.manager.service.sink.StreamSinkService;
 import org.apache.inlong.manager.service.stream.InlongStreamService;
+
 import org.json.JSONObject;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -354,7 +355,7 @@ public class SortServiceImplTest extends ServiceBaseTest {
                 + "&producer=true"
                 + "&consumer=" + (isConsumable ? "true" : "false");
         request.setExtTag(extTag);
-        request.setExtParams("{\"tenant\":\"testTenant\","
+        request.setExtParams("{\"pulsarTenant\":\"testTenant\","
                 + "\"authentication\":\"testAuth\",\"adminUrl\":\"testAdmin\"}");
         clusterService.save(request, "test operator");
     }

@@ -17,6 +17,8 @@
 
 package org.apache.inlong.sort.iceberg.sink.multiple;
 
+import org.apache.flink.api.common.state.ValueState;
+import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.inlong.sort.iceberg.FlinkActions;
 import org.apache.inlong.sort.iceberg.FlinkDynamicTableFactory;
 import org.apache.inlong.sort.iceberg.sink.DeltaManifests;
@@ -73,6 +75,8 @@ public class IcebergSingleFileCommiter extends IcebergProcessFunction<WriteResul
 
     private static final long serialVersionUID = 1L;
     private static final long INITIAL_CHECKPOINT_ID = -1L;
+
+    private static final long INVALID_SNAPSHOT_ID = -1L;
     private static final byte[] EMPTY_MANIFEST_DATA = new byte[0];
 
     private static final Logger LOG = LoggerFactory.getLogger(IcebergSingleFileCommiter.class);
@@ -114,9 +118,13 @@ public class IcebergSingleFileCommiter extends IcebergProcessFunction<WriteResul
     // when traversing iceberg table's snapshots.
     private final ListStateDescriptor<String> jobIdDescriptor;
     private transient ListState<String> jobIdState;
+    // checkpoint id state
+    //private final ListStateDescriptor<Long> checkpointIdDescriptor;
+    //private transient ListState<Long> checkpointIdState;
     // All pending checkpoints states for this function.
     private final ListStateDescriptor<SortedMap<Long, byte[]>> stateDescriptor;
     private transient ListState<SortedMap<Long, byte[]>> checkpointsState;
+
 
     // compact file action
     private ActionsProvider flinkActions;
@@ -167,28 +175,65 @@ public class IcebergSingleFileCommiter extends IcebergProcessFunction<WriteResul
                 .createOutputFileFactory(table, flinkJobId, subTaskId, attemptId);
         this.maxCommittedCheckpointId = INITIAL_CHECKPOINT_ID;
 
-        this.checkpointsState = context.getOperatorStateStore().getListState(stateDescriptor);
+        //this.checkpointsState = context.getOperatorStateStore().getListState(stateDescriptor);
         this.jobIdState = context.getOperatorStateStore().getListState(jobIdDescriptor);
+        //this.checkpointIdState = context.getOperatorStateStore().getListState(checkpointIdDescriptor);
         // New table doesn't have state, so it doesn't need to do restore operation.
-        if (context.isRestored() && jobIdState.get().iterator().hasNext()) {
+        if (context.isRestored()) {
+            if (!jobIdState.get().iterator().hasNext()) {
+                LOG.error("JobId is null, Skip restore process");
+                return;
+            }
             String restoredFlinkJobId = jobIdState.get().iterator().next();
+            this.dataFilesPerCheckpoint.putAll(checkpointsState.get().iterator().next());
+            Long restoredCheckpointId = dataFilesPerCheckpoint.keySet().stream().max(Long::compareTo).get();
             Preconditions.checkState(!Strings.isNullOrEmpty(restoredFlinkJobId),
                     "Flink job id parsed from checkpoint snapshot shouldn't be null or empty");
 
-            // Since flink's checkpoint id will start from the max-committed-checkpoint-id + 1 in the new flink job even
-            // if it's restored from a snapshot created by another different flink job, so it's safe to assign the max
-            // committed checkpoint id from restored flink job to the current flink job.
-            this.maxCommittedCheckpointId = getMaxCommittedCheckpointId(table, restoredFlinkJobId);
-
-            NavigableMap<Long, byte[]> uncommittedDataFiles = Maps
-                    .newTreeMap(checkpointsState.get().iterator().next())
-                    .tailMap(maxCommittedCheckpointId, false);
-            if (!uncommittedDataFiles.isEmpty()) {
-                // Committed all uncommitted data files from the old flink job to iceberg table.
-                long maxUncommittedCheckpointId = uncommittedDataFiles.lastKey();
-                commitUpToCheckpoint(uncommittedDataFiles, restoredFlinkJobId, maxUncommittedCheckpointId);
-            }
+            // ------------------------------
+            // ↓                             ↑
+            // a --> a+1 --> a+2 --> ... --> a+n
+            // max checkpoint id = m
+            // a >= m: supplementary commit snapshot between checkpoint (`m`, `a`]
+            // a <  m: rollback to snapshot associated with checkpoint `a`
+            rollbackAndRecover(restoredFlinkJobId, restoredCheckpointId);
         }
+    }
+
+    private void rollback(long snapshotId) {
+        table.manageSnapshots().rollbackTo(snapshotId);
+    }
+
+    private void recover(String restoredFlinkJobId) throws Exception {
+        NavigableMap<Long, byte[]> uncommittedDataFiles = dataFilesPerCheckpoint;
+        if (!uncommittedDataFiles.isEmpty()) {
+            // Committed all uncommitted data files from the old flink job to iceberg table.
+            long maxUncommittedCheckpointId = uncommittedDataFiles.lastKey();
+            commitUpToCheckpoint(uncommittedDataFiles, restoredFlinkJobId, maxUncommittedCheckpointId);
+        }
+    }
+
+    private void rollbackAndRecover(String restoredFlinkJobId, Long restoredCheckpointId) throws Exception {
+        // Since flink's checkpoint id will start from the max-committed-checkpoint-id + 1 in the new flink job even
+        // if it's restored from a snapshot created by another different flink job, so it's safe to assign the max
+        // committed checkpoint id from restored flink job to the current flink job.
+        this.maxCommittedCheckpointId = getMaxCommittedCheckpointId(table, restoredFlinkJobId);
+        // Find snapshot associated with restoredCheckpointId
+        long snapshotId = getSnapshotIdAssociatedWithChkId(table, restoredFlinkJobId, restoredCheckpointId);
+
+        // Once maxCommitted CheckpointId is greater than restoredCheckpointId, it means more data added, it need
+        // rollback
+        if (restoredCheckpointId < maxCommittedCheckpointId) {
+            LOG.info("Rollback committed snapshot to {}", snapshotId);
+            rollback(snapshotId);  // todo:what if rollback failed
+        } else {
+            LOG.info("Recover uncommitted snapshot between chk({}, {}]. "
+                            + "It maybe has some repeat data between chk({}, {}]",
+                    dataFilesPerCheckpoint.keySet().stream().min(Long::compareTo), maxCommittedCheckpointId,
+                    maxCommittedCheckpointId, restoredCheckpointId);
+            recover(restoredFlinkJobId);
+        }
+        dataFilesPerCheckpoint.clear();
     }
 
     @Override
@@ -257,6 +302,8 @@ public class IcebergSingleFileCommiter extends IcebergProcessFunction<WriteResul
             }
             continuousEmptyCheckpoints = 0;
         }
+        // remove already committed snapshot manifest info
+        pendingMap.keySet().forEach(deltaManifestsMap::remove);
         pendingMap.clear();
 
         // Delete the committed manifests.
@@ -422,5 +469,25 @@ public class IcebergSingleFileCommiter extends IcebergProcessFunction<WriteResul
         }
 
         return lastCommittedCheckpointId;
+    }
+
+    static long getSnapshotIdAssociatedWithChkId(Table table, String flinkJobId, Long checkpointId) {
+        Snapshot snapshot = table.currentSnapshot();
+        long associatedSnapshotId = INVALID_SNAPSHOT_ID;
+
+        while (snapshot != null) {
+            Map<String, String> summary = snapshot.summary();
+            String snapshotFlinkJobId = summary.get(FLINK_JOB_ID);
+            if (flinkJobId.equals(snapshotFlinkJobId)) {
+                String value = summary.get(MAX_COMMITTED_CHECKPOINT_ID);
+                if (value != null && checkpointId.equals(Long.parseLong(value))) {
+                    associatedSnapshotId = snapshot.snapshotId();
+                    break;
+                }
+            }
+            Long parentSnapshotId = snapshot.parentId();
+            snapshot = parentSnapshotId != null ? table.snapshot(parentSnapshotId) : null;
+        }
+        return associatedSnapshotId;
     }
 }
